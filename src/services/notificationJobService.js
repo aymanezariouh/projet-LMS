@@ -1,6 +1,7 @@
 import NotificationPreference from "../models/NotificationPreference.js";
 import NotificationDelivery from "../models/NotificationDelivery.js";
 import { getNotificationPeriod } from "../utils/notificationPeriod.js";
+import { sendEmail } from "./emailService.js";
 
 export const processNotifications = async () => {
   const preferences = await NotificationPreference.find({
@@ -50,6 +51,40 @@ export const processNotifications = async () => {
     }
 
     console.log(`Processing notifications for ${trainer.email}`);
+
+    try {
+      await sendEmail(
+        trainer.email,
+        "LMS - Notification",
+        "<p>Bonjour, vous avez une nouvelle notification LMS.</p>",
+      );
+
+      await NotificationDelivery.updateOne(
+        {
+          trainer: trainer._id,
+          frequency: preference.frequency,
+          period: period,
+        },
+        {
+          $set: { status: "sent" },
+        },
+      );
+
+      console.log("Notification sent to:", trainer.email);
+    } catch (error) {
+      await NotificationDelivery.updateOne(
+        {
+          trainer: trainer._id,
+          frequency: preference.frequency,
+          period: period,
+        },
+        {
+          $set: { status: "failed" },
+        },
+      );
+
+      console.error("Notification failed:", error.message);
+    }
 
     console.log("Frequency:", preference.frequency);
     console.log("Courses:", preference.courses);
