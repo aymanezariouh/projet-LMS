@@ -478,11 +478,212 @@
     },
     "/api/trainer/preferences": {
       "get": {
-        "summary": "New Request",
-        "responses": {},
         "tags": [
-          "trainer"
-        ]
+          "PREFS"
+        ],
+        "operationId": "getMyPreferences",
+        "summary": "Lire ses préférences",
+        "description": "Retourne directement les préférences, sans enveloppe. Si aucun document n'existe, retourne enabled=true, courses=[] et frequency=daily sans enregistrer de document. Sinon, retourne le document existant avec ses métadonnées MongoDB. Ne lit jamais les préférences d'un autre formateur.",
+        "security": [
+          {
+            "PrefsBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Préférences existantes ou valeurs par défaut non persistées",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PrefsDefaultPreferences"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PrefsSavedPreferences"
+                    }
+                  ]
+                },
+                "examples": {
+                  "notYetSaved": {
+                    "summary": "Aucune préférence enregistrée",
+                    "value": {
+                      "enabled": true,
+                      "courses": [],
+                      "frequency": "daily"
+                    }
+                  },
+                  "saved": {
+                    "summary": "Préférences enregistrées et désactivées",
+                    "value": {
+                      "_id": "507f1f77bcf86cd799439011",
+                      "trainer": "507f191e810c19729de860ea",
+                      "enabled": false,
+                      "frequency": "weekly",
+                      "courses": [
+                        "507f1f77bcf86cd799439012"
+                      ],
+                      "createdAt": "2026-10-26T08:00:00.000Z",
+                      "updatedAt": "2026-10-26T09:00:00.000Z",
+                      "__v": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/PrefsUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PrefsForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/PrefsServerError"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "PREFS"
+        ],
+        "operationId": "updateMyPreferences",
+        "summary": "Créer ou modifier ses préférences",
+        "description": "Crée les préférences si elles n'existent pas, sinon met à jour le même document. Renvoie 200 dans les deux cas. Les trois champs enabled, frequency et courses sont obligatoires, y compris pour désactiver les notifications. Chaque cours doit exister et appartenir au formateur connecté. Les doublons sont supprimés après normalisation des ObjectId en minuscules, en conservant l'ordre de première apparition. courses=[] enregistre une sélection vide ; sa signification dans le traitement des résumés est hors du périmètre PREFS. Les champs supplémentaires ne permettent pas de modifier le propriétaire du document.",
+        "security": [
+          {
+            "PrefsBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrefsPreferenceInput"
+              },
+              "examples": {
+                "daily": {
+                  "summary": "Activer les notifications quotidiennes pour un cours",
+                  "value": {
+                    "enabled": true,
+                    "frequency": "daily",
+                    "courses": [
+                      "507f1f77bcf86cd799439012"
+                    ]
+                  }
+                },
+                "disabled": {
+                  "summary": "Désactiver les notifications",
+                  "value": {
+                    "enabled": false,
+                    "frequency": "weekly",
+                    "courses": []
+                  }
+                },
+                "weekly": {
+                  "summary": "Activer les notifications hebdomadaires",
+                  "value": {
+                    "enabled": true,
+                    "frequency": "weekly",
+                    "courses": [
+                      "507f1f77bcf86cd799439012",
+                      "507f1f77bcf86cd799439013"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Préférences créées ou mises à jour",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message",
+                    "preferences"
+                  ],
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "enum": [
+                        "Preferences updated successfully"
+                      ]
+                    },
+                    "preferences": {
+                      "$ref": "#/components/schemas/PrefsSavedPreferences"
+                    }
+                  }
+                },
+                "example": {
+                  "message": "Preferences updated successfully",
+                  "preferences": {
+                    "_id": "507f1f77bcf86cd799439011",
+                    "trainer": "507f191e810c19729de860ea",
+                    "enabled": true,
+                    "frequency": "daily",
+                    "courses": [
+                      "507f1f77bcf86cd799439012"
+                    ],
+                    "createdAt": "2026-10-26T08:00:00.000Z",
+                    "updatedAt": "2026-10-26T08:00:00.000Z",
+                    "__v": 0
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Champ obligatoire absent, type incorrect, fréquence invalide, ObjectId invalide ou cours inexistant/appartenant à un autre formateur. Un corps absent retourne également 400. Aucune préférence n'est modifiée en cas d'échec de validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefsMessageError"
+                },
+                "examples": {
+                  "enabled": {
+                    "value": {
+                      "message": "enabled must be true or false"
+                    }
+                  },
+                  "frequency": {
+                    "value": {
+                      "message": "frequency must be daily or weekly"
+                    }
+                  },
+                  "courses": {
+                    "value": {
+                      "message": "courses must be an array"
+                    }
+                  },
+                  "invalidId": {
+                    "value": {
+                      "message": "Invalid course ID"
+                    }
+                  },
+                  "courseOwnership": {
+                    "value": {
+                      "message": "Some courses do not belong to this trainer or do not exist"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/PrefsUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/PrefsForbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/PrefsServerError"
+          }
+        }
       }
     }
   },
@@ -491,7 +692,218 @@
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer"
+      },
+      "PrefsBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Utiliser le token retourné par POST /api/auth/login dans Authorization: Bearer <token>. Le compte doit être actif et son rôle en base doit être trainer."
+      }
+    },
+    "schemas": {
+      "PrefsObjectId": {
+        "type": "string",
+        "pattern": "^[a-fA-F0-9]{24}$",
+        "example": "507f1f77bcf86cd799439012"
+      },
+      "PrefsPreferenceInput": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "frequency",
+          "courses"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "true : abonnement actif ; false : notifications désactivées."
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly"
+            ]
+          },
+          "courses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrefsObjectId"
+            },
+            "description": "Identifiants de cours appartenant au formateur. Tableau vide accepté. Les doublons, même avec une casse différente, sont acceptés puis supprimés."
+          }
+        }
+      },
+      "PrefsDefaultPreferences": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "frequency",
+          "courses"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "daily"
+            ]
+          },
+          "courses": {
+            "type": "array",
+            "maxItems": 0,
+            "items": {
+              "$ref": "#/components/schemas/PrefsObjectId"
+            }
+          }
+        }
+      },
+      "PrefsSavedPreferences": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PrefsPreferenceInput"
+          },
+          {
+            "type": "object",
+            "required": [
+              "_id",
+              "trainer",
+              "createdAt",
+              "updatedAt"
+            ],
+            "properties": {
+              "_id": {
+                "$ref": "#/components/schemas/PrefsObjectId"
+              },
+              "trainer": {
+                "$ref": "#/components/schemas/PrefsObjectId"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "__v": {
+                "type": "integer",
+                "description": "Version Mongoose, présente selon le document."
+              }
+            }
+          }
+        ]
+      },
+      "PrefsMessageError": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "PrefsAuthError": {
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "PrefsUnauthorized": {
+        "description": "JWT absent, invalide ou expiré, ou utilisateur supprimé",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PrefsAuthError"
+            },
+            "examples": {
+              "missingToken": {
+                "value": {
+                  "success": false,
+                  "message": "Access denied. No token provided."
+                }
+              },
+              "invalidToken": {
+                "value": {
+                  "success": false,
+                  "message": "Invalid or expired token."
+                }
+              },
+              "deletedUser": {
+                "value": {
+                  "success": false,
+                  "message": "Invalid token: user not found."
+                }
+              }
+            }
+          }
+        }
+      },
+      "PrefsForbidden": {
+        "description": "Compte suspendu ou rôle différent de trainer, y compris admin",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PrefsAuthError"
+            },
+            "examples": {
+              "role": {
+                "value": {
+                  "success": false,
+                  "message": "Forbidden: Insufficient permissions."
+                }
+              },
+              "suspended": {
+                "value": {
+                  "success": false,
+                  "message": "Account is suspended."
+                }
+              }
+            }
+          }
+        }
+      },
+      "PrefsServerError": {
+        "description": "Erreur interne pendant la lecture ou l'enregistrement des préférences ; aucun détail technique n'est exposé",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PrefsMessageError"
+            },
+            "example": {
+              "message": "Server error"
+            }
+          }
+        }
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "PREFS",
+      "description": "Préférences du formateur connecté"
+    }
+  ]
 }

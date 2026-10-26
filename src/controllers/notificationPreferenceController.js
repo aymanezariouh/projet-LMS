@@ -36,7 +36,7 @@ export const updateMyPreferences = async (req, res) => {
   try {
     const trainerId = req.user.id;
 
-    const { enabled, frequency, courses } = req.body;
+    const { enabled, frequency, courses } = req.body || {};
 
     // Validate enabled
     if (typeof enabled !== "boolean") {
@@ -68,8 +68,8 @@ export const updateMyPreferences = async (req, res) => {
       }
     }
 
-    // Remove duplicate course IDs
-    const uniqueCourses = [...new Set(courses)];
+    // ObjectId hex strings identify the same course regardless of case
+    const uniqueCourses = [...new Set(courses.map((courseId) => String(courseId).toLowerCase()))];
 
     // Find courses belonging to this trainer
     const ownedCourses = await Course.find({
