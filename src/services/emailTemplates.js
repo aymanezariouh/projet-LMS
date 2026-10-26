@@ -51,3 +51,24 @@ export function passwordResetEmail(name, resetUrl) {
     <p>If you did not request this, you can ignore this email.</p>
   `;
 }
+
+
+
+export function inactiveLearnerReminderEmail(name, courseTitles, inactiveDays) {
+  const safeName = escapeHtml(name);
+  const safeCourses = courseTitles
+    .map((title) => `<li>${escapeHtml(title)}</li>`)
+    .join("");
+
+  return `
+    <h1>We miss you at LMS</h1>
+    <p>Hello ${safeName},</p>
+    <p>It has been at least ${inactiveDays} days since your last learning activity.</p>
+    ${
+      safeCourses
+        ? `<p>Your active courses:</p><ul>${safeCourses}</ul>`
+        : ""
+    }
+    <p>Come back and continue your learning journey!</p>
+  `;
+}
