@@ -5,14 +5,15 @@ import { sendEmail } from "./emailService.js";
 
 import Enrollment from "../models/Enrollment.js";
 import Progress from "../models/progress.js";
-import { sendEmail } from "./emailService.js";
 import { inactiveLearnerReminderEmail } from "./emailTemplates.js";
+
+const MAX_ATTEMPTS = 3;
 
 export const processNotifications = async () => {
   const preferences = await NotificationPreference.find({
     enabled: true,
   }).populate("trainer", "name email accountStatus");
-  console.log("Enabled preferences:", preferences.length);
+
   const today = new Date();
 
   const weekday = new Intl.DateTimeFormat("en-US", {
@@ -21,38 +22,73 @@ export const processNotifications = async () => {
   }).format(today);
 
   const isMonday = weekday === "Monday";
+
   let processed = 0;
 
   for (const preference of preferences) {
     const trainer = preference.trainer;
-    console.log("Trainer:", preference.trainer?.email);
-    console.log("Account status:", preference.trainer?.accountStatus);
-    console.log("Frequency:", preference.frequency);
-    // Skip deleted or suspended trainers
+
     if (!trainer || trainer.accountStatus !== "active") {
       continue;
     }
+
     if (preference.frequency === "weekly" && !isMonday) {
       continue;
     }
 
     const period = getNotificationPeriod(preference.frequency, today);
 
+    const deliveryKey = {
+      trainer: trainer._id,
+      frequency: preference.frequency,
+      period: period,
+    };
+
+    const attemptTime = new Date();
+
     try {
-      // Claim this trainer's notification period
+      // First attempt: claim the notification period
       await NotificationDelivery.create({
-        trainer: trainer._id,
-        frequency: preference.frequency,
-        period: period,
+        ...deliveryKey,
         status: "pending",
+        attempts: 1,
+        lastAttemptAt: attemptTime,
+        lastError: null,
       });
     } catch (error) {
-      if (error.code === 11000) {
-        console.log(`Already claimed: ${trainer.email} (${period})`);
+      if (error.code !== 11000) {
+        throw error;
+      }
+
+      // Retry only previously failed notifications
+      const retry = await NotificationDelivery.findOneAndUpdate(
+        {
+          ...deliveryKey,
+          status: "failed",
+          $or: [
+            { attempts: { $lt: MAX_ATTEMPTS } },
+            { attempts: { $exists: false } },
+          ],
+        },
+        {
+          $set: {
+            status: "pending",
+            lastAttemptAt: attemptTime,
+            lastError: null,
+          },
+          $inc: {
+            attempts: 1,
+          },
+        },
+        { returnDocument: "after" },
+      );
+
+      if (!retry) {
+        console.log(`Notification skipped: ${trainer.email}`);
         continue;
       }
 
-      throw error;
+      console.log(`Retry attempt ${retry.attempts}: ${trainer.email}`);
     }
 
     console.log(`Processing notifications for ${trainer.email}`);
@@ -64,29 +100,21 @@ export const processNotifications = async () => {
         "<p>Bonjour, vous avez une nouvelle notification LMS.</p>",
       );
 
-      await NotificationDelivery.updateOne(
-        {
-          trainer: trainer._id,
-          frequency: preference.frequency,
-          period: period,
+      await NotificationDelivery.updateOne(deliveryKey, {
+        $set: {
+          status: "sent",
+          lastError: null,
         },
-        {
-          $set: { status: "sent" },
-        },
-      );
+      });
 
       console.log("Notification sent to:", trainer.email);
     } catch (error) {
-      await NotificationDelivery.updateOne(
-        {
-          trainer: trainer._id,
-          frequency: preference.frequency,
-          period: period,
+      await NotificationDelivery.updateOne(deliveryKey, {
+        $set: {
+          status: "failed",
+          lastError: error.message,
         },
-        {
-          $set: { status: "failed" },
-        },
-      );
+      });
 
       console.error("Notification failed:", error.message);
     }
@@ -102,7 +130,10 @@ export const processNotifications = async () => {
   };
 };
 
-
+// ==========================================
+// INACTIVE LEARNER REMINDERS
+// Abdelilah's existing handler
+// ==========================================
 
 export const processInactiveLearnerReminders = async () => {
   const inactiveDays = Number(process.env.INACTIVE_DAYS || 14);
@@ -111,9 +142,7 @@ export const processInactiveLearnerReminders = async () => {
     throw new Error("INACTIVE_DAYS must be a positive integer");
   }
 
-  const cutoff = new Date(
-    Date.now() - inactiveDays * 24 * 60 * 60 * 1000,
-  );
+  const cutoff = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000);
 
   const enrollments = await Enrollment.find({
     status: "active",
@@ -124,7 +153,7 @@ export const processInactiveLearnerReminders = async () => {
   const learners = new Map();
   let skipped = 0;
 
-  // Group active enrollments by learner to avoid duplicate reminder emails.
+  // Group active enrollments by learner
   for (const enrollment of enrollments) {
     const learner = enrollment.learner;
 
@@ -139,14 +168,13 @@ export const processInactiveLearnerReminders = async () => {
       learners.set(key, {
         learner,
         courseTitles: new Set(),
-        latestEnrollmentAt:
-          enrollment.enrolledAt || enrollment.createdAt,
+        latestEnrollmentAt: enrollment.enrolledAt || enrollment.createdAt,
       });
     }
 
     const data = learners.get(key);
-    const enrollmentDate =
-      enrollment.enrolledAt || enrollment.createdAt;
+
+    const enrollmentDate = enrollment.enrolledAt || enrollment.createdAt;
 
     if (
       enrollmentDate &&
@@ -177,7 +205,6 @@ export const processInactiveLearnerReminders = async () => {
       continue;
     }
 
-    // Use the real progress update timestamp as the activity signal.
     const latestProgress = await Progress.findOne({
       learner: learner._id,
     })
@@ -187,7 +214,6 @@ export const processInactiveLearnerReminders = async () => {
 
     let lastActivityAt = latestProgress?.updatedAt;
 
-    // If the learner has no recent progress, also consider enrollment dates.
     if (
       latestEnrollmentAt &&
       (!lastActivityAt ||
