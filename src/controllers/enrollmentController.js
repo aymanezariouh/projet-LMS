@@ -5,7 +5,6 @@ import User from "../models/User.js";
 import { sendEmail } from "../services/emailService.js";
 import { courseEnrollmentEmail } from "../services/emailTemplates.js";
 
-
 // POST /api/courses/:courseId/enroll
 export const enrollCourse = async (req, res) => {
   try {
@@ -50,21 +49,18 @@ export const enrollCourse = async (req, res) => {
     });
 
     try {
-  const learner = await User.findById(learnerId).select("name email");
+      const learner = await User.findById(learnerId).select("name email");
 
-  if (learner?.email) {
-    await sendEmail(
-      learner.email,
-      `Enrollment confirmed: ${course.title}`,
-      courseEnrollmentEmail(learner.name, course.title),
-    );
-  }
-} catch (emailError) {
-  console.error(
-    "Failed to send enrollment email:",
-    emailError.message,
-  );
-}
+      if (learner?.email) {
+        await sendEmail(
+          learner.email,
+          `Enrollment confirmed: ${course.title}`,
+          courseEnrollmentEmail(learner.name, course.title),
+        );
+      }
+    } catch (emailError) {
+      console.error("Failed to send enrollment email:", emailError.message);
+    }
 
     res.status(201).json({
       message: "Successfully enrolled in course",
