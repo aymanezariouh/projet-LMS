@@ -42,3 +42,6 @@ variables:
   - key: json_web_token_14i3
     secret: true
     disabled: false
+  - key: json_web_token_0c3b
+    secret: true
+    disabled: false

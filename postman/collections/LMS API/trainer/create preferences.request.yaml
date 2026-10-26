@@ -1,4 +1,19 @@
 $kind: http-request
-url: ""
-method: GET
+url: "{{URL}}/api/trainer/preferences"
+method: PUT
+body:
+  type: json
+  content: "{\r
+
+    \  \"enabled\": true,\r
+
+    \  \"frequency\": \"daily\",\r
+
+    \  \"courses\": []\r
+
+    }"
+auth:
+  type: bearer
+  credentials:
+    token: "{{json_web_token_0c3b}}"
 order: 4000
