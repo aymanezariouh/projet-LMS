@@ -24,6 +24,21 @@ const notificationDeliverySchema = new mongoose.Schema(
       enum: ["pending", "sent", "failed"],
       default: "pending",
     },
+    attempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    lastAttemptAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastError: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );
